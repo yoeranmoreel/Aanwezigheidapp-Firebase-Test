@@ -1,327 +1,252 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aanwezigheid - Medewerker App</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        * { -webkit-tap-highlight-color: transparent; }
-        body { margin: 0; padding: 0; overflow-x: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
-        .gradient-bg { background: linear-gradient(135deg, #1e293b 0%, #334155 100%); min-height: 100vh; position: relative; }
-        .gradient-bg::before { content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: radial-gradient(circle at 20% 50%, rgba(59, 130, 246, 0.2) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(168, 85, 247, 0.2) 0%, transparent 50%); pointer-events: none; }
-        .glass-card { background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.08); }
-        .glass-card-strong { background: rgba(255,255,255,0.05); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); border: 1px solid rgba(255,255,255,0.1); }
-        .bottom-nav { background: rgba(30,41,59,0.8); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border-top: 1px solid rgba(255,255,255,0.08); box-shadow: 0 -10px 40px rgba(0,0,0,0.3); }
-        .nav-item { transition: all 0.3s ease; }
-        .nav-item:hover { background: rgba(255,255,255,0.05); }
-        .nav-item:active { transform: scale(0.95); }
-        .loading-spinner { border: 4px solid rgba(148,163,184,0.3); border-top: 4px solid #6366f1; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .toggle-switch { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-        .toggle-switch:active { transform: scale(0.98); }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fade-in { animation: fadeIn 0.3s ease-out; }
-        html { scroll-behavior: smooth; }
-    </style>
-</head>
-<body>
-    <div id="app"></div>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aanwezigheid - Medewerker App</title>
 
-    <script type="module">
-        // ====================================
-        // FIREBASE CONFIG — vul jouw gegevens in
-        // ====================================
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, addDoc, updateDoc, doc, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+<script src="https://cdn.tailwindcss.com"></script>
 
-        const firebaseConfig = {
-  apiKey: "AIzaSyD9w-uzVhuvfIR5_UH-xcMKJPAlpx5fKRk",
-  authDomain: "aanwezigheid-app.firebaseapp.com",
-  projectId: "aanwezigheid-app",
-  storageBucket: "aanwezigheid-app.firebasestorage.app",
-  messagingSenderId: "188437676924",
-  appId: "1:188437676924:web:194eb53f7c6eb40ec3daf9",
-  measurementId: "G-V8WM335NFL"
-};
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        // ====================================
-        // STATE
-        // ====================================
-        let medewerkers = [];
-        let selectedMedewerker = null;
-        let status = 'Afwezig';
-        let lastUpdate = null;
-        let loading = true;
-        let saving = false;
-        let message = null;
-
-        // ====================================
-        // FIREBASE FUNCTIES
-        // ====================================
-        async function loadMedewerkers() {
-            try {
-                const snapshot = await getDocs(collection(db, 'medewerkers'));
-                medewerkers = snapshot.docs
-                    .map(d => ({ id: d.id, ...d.data() }))
-                    .filter(m => m.naam);
-                loading = false;
-            } catch (error) {
-                console.error('Laden mislukt:', error);
-                showMessage('error', 'Kon medewerkers niet laden');
-                loading = false;
-            }
-            render();
-        }
-
-        async function loadCurrentStatus(naam) {
-            try {
-                const now = new Date();
-                const startVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                const eindeVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-                const q = query(
-                    collection(db, 'aanwezigheid'),
-                    where('naam', '==', naam),
-                    where('datum', '>=', Timestamp.fromDate(startVanDag)),
-                    where('datum', '<', Timestamp.fromDate(eindeVanDag))
-                );
-                const snapshot = await getDocs(q);
-
-                if (!snapshot.empty) {
-                    const data = snapshot.docs[0].data();
-                    status = data.status;
-                    lastUpdate = data.tijdstip?.toDate() || null;
-                } else {
-                    status = 'Afwezig';
-                    lastUpdate = null;
-                }
-            } catch (error) {
-                console.error('Status laden mislukt:', error);
-            }
-            render();
-        }
-
-        async function updateStatus(newStatus) {
-            if (!selectedMedewerker) {
-                showMessage('error', 'Selecteer eerst je naam');
-                return;
-            }
-
-            saving = true;
-            message = null;
-            render();
-
-            try {
-                const now = new Date();
-                const startVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                const eindeVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-
-                const q = query(
-                    collection(db, 'aanwezigheid'),
-                    where('naam', '==', selectedMedewerker.naam),
-                    where('datum', '>=', Timestamp.fromDate(startVanDag)),
-                    where('datum', '<', Timestamp.fromDate(eindeVanDag))
-                );
-                const snapshot = await getDocs(q);
-
-                if (!snapshot.empty) {
-                    await updateDoc(snapshot.docs[0].ref, {
-                        status: newStatus,
-                        tijdstip: Timestamp.fromDate(now)
-                    });
-                } else {
-                    await addDoc(collection(db, 'aanwezigheid'), {
-                        naam: selectedMedewerker.naam,
-                        datum: Timestamp.fromDate(now),
-                        status: newStatus,
-                        tijdstip: Timestamp.fromDate(now)
-                    });
-                }
-
-                status = newStatus;
-                lastUpdate = now;
-                showMessage('success', `Status bijgewerkt naar ${newStatus}`);
-            } catch (error) {
-                console.error('Update error:', error);
-                showMessage('error', 'Kon status niet opslaan');
-            } finally {
-                saving = false;
-                render();
-            }
-        }
-
-        // ====================================
-        // UI HELPERS
-        // ====================================
-        async function handleMedewerkerSelect(naam) {
-            selectedMedewerker = medewerkers.find(m => m.naam === naam);
-            await loadCurrentStatus(naam);
-        }
-
-        function handleToggle() {
-            updateStatus(status === 'Aanwezig' ? 'Afwezig' : 'Aanwezig');
-        }
-
-        function showMessage(type, text) {
-            message = { type, text };
-            render();
-            setTimeout(() => { message = null; render(); }, 3000);
-        }
-
-        window.handleMedewerkerSelect = handleMedewerkerSelect;
-        window.handleToggle = handleToggle;
-        function handleToggleStatus(newStatus) {
-    if (!selectedMedewerker) return;
-    updateStatus(newStatus);
+<style>
+*{
+    -webkit-tap-highlight-color: transparent;
 }
 
-window.handleToggleStatus = handleToggleStatus;
+body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;
+}
 
-        // ====================================
-        // RENDER
-        // ====================================
-        function render() {
-            const app = document.getElementById('app');
+.gradient-bg{
+    background:linear-gradient(135deg,#1e293b 0%,#334155 100%);
+    min-height:100vh;
+}
 
-            if (loading) {
-                app.innerHTML = `<div class="gradient-bg flex items-center justify-center"><div class="text-center"><div class="loading-spinner mx-auto mb-4"></div><p class="text-white text-lg">Laden...</p></div></div>`;
-                return;
-            }
+.gradient-bg::before{
+    content:'';
+    position:fixed;
+    inset:0;
+    background:
+    radial-gradient(circle at 20% 50%, rgba(59,130,246,.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(168,85,247,.15) 0%, transparent 50%);
+    pointer-events:none;
+}
 
-            app.innerHTML = `
-                <div class="gradient-bg text-white pb-24">
-                    <div class="relative z-10 max-w-2xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+.glass-card{
+    background:rgba(255,255,255,.05);
+    backdrop-filter:blur(20px);
+    border:1px solid rgba(255,255,255,.08);
+}
 
-                        <div class="glass-card-strong rounded-2xl sm:rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 animate-fade-in">
-                            <div class="flex items-center gap-3 sm:gap-4 mb-4">
-                                <div class="bg-gradient-to-br from-blue-500/20 to-cyan-500/20 p-2 sm:p-3 rounded-xl border border-blue-500/30">
-                                    <svg class="w-6 h-6 sm:w-8 sm:h-8 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
-                                    </svg>
-                                </div>
-                                <div class="flex-1">
-                                    <h1 class="text-xl sm:text-2xl font-bold">Aanwezigheid</h1>
-                                    <p class="text-xs sm:text-sm text-slate-400">Registreer je status</p>
-                                </div>
-                            </div>
+.teacher-card{
+    transition:.2s;
+}
 
-                            ${!selectedMedewerker ? `
-                                <div>
-                                    <label class="block text-sm font-medium text-slate-300 mb-2">Wie ben jij?</label>
-                                    <select onchange="handleMedewerkerSelect(this.value)" class="w-full px-4 py-3 glass-card rounded-xl text-base sm:text-lg text-white border border-white/10 focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all">
-                                        <option value="" class="bg-slate-800">Selecteer je naam...</option>
-                                        ${medewerkers.map(m => `<option value="${m.naam}" class="bg-slate-800">${m.naam}</option>`).join('')}
-                                    </select>
-                                </div>
-                            ` : `
-                                <div class="glass-card rounded-xl p-4 flex items-center justify-between">
-                                    <div>
-                                        <p class="text-xs sm:text-sm text-slate-400">Ingelogd als</p>
-                                        <p class="text-base sm:text-lg font-bold">${selectedMedewerker.naam}</p>
-                                    </div>
-                                    <button onclick="window._resetMedewerker()" class="text-xs sm:text-sm text-blue-400 hover:text-blue-300 px-3 py-1.5 glass-card rounded-lg transition-all">
-                                        Wijzigen
-                                    </button>
-                                </div>
-                            `}
-                        </div>
+.teacher-card:active{
+    transform:scale(.97);
+}
 
-                        ${message ? `
-                            <div class="mb-4 sm:mb-6 p-4 rounded-xl sm:rounded-2xl animate-fade-in ${message.type === 'success' ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border border-green-500/30 text-green-100' : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border border-red-500/30 text-red-100'}">
-                                <div class="flex items-center gap-3">
-                                    <svg class="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        ${message.type === 'success' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>' : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>'}
-                                    </svg>
-                                    <p class="font-medium text-sm sm:text-base">${message.text}</p>
-                                </div>
-                            </div>
-                        ` : ''}
+.bottom-nav{
+    background:rgba(30,41,59,.8);
+    backdrop-filter:blur(20px);
+    -webkit-backdrop-filter:blur(20px);
+    border-top:1px solid rgba(255,255,255,.08);
+    box-shadow:0 -10px 40px rgba(0,0,0,.3);
+}
 
-                        <div class="glass-card-strong rounded-2xl p-4 sm:p-6 animate-fade-in">
-    <h2 class="text-lg font-semibold text-slate-300 mb-4 text-center">Status wijzigen</h2>
+.nav-item{
+    transition:all .3s ease;
+}
 
-    <div class="grid grid-cols-2 gap-4">
+.nav-item:hover{
+    background:rgba(255,255,255,.05);
+}
 
-        <!-- AANWEZIG -->
-        <button onclick="handleToggleStatus('Aanwezig')"
-            class="p-5 rounded-2xl border transition-all active:scale-95
-            ${status === 'Aanwezig'
-                ? 'bg-green-500/20 border-green-400 text-green-300'
-                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'}">
+.nav-item:active{
+    transform:scale(.95);
+}
+</style>
+</head>
 
-            <div class="text-2xl mb-2">🟢</div>
-            <div class="font-bold">Aanwezig</div>
-        </button>
+<body>
 
-        <!-- AFWEZIG -->
-        <button onclick="handleToggleStatus('Afwezig')"
-            class="p-5 rounded-2xl border transition-all active:scale-95
-            ${status === 'Afwezig'
-                ? 'bg-red-500/20 border-red-400 text-red-300'
-                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'}">
+<div id="app"></div>
 
-            <div class="text-2xl mb-2">🔴</div>
-            <div class="font-bold">Afwezig</div>
-        </button>
+<script type="module">
 
-    </div>
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+    getFirestore,
+    collection,
+    getDocs,
+    query,
+    where,
+    Timestamp,
+    addDoc,
+    updateDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-    <div class="mt-6 text-center text-sm text-slate-400">
-        ${saving ? 'Bezig met opslaan...' : 'Tik op een tegel om je status te wijzigen'}
-    </div>
-</div>
+const firebaseConfig = {
+    apiKey: "AIzaSyD9w-uzVhuvfIR5_UH-xcMKJPAlpx5fKRk",
+    authDomain: "aanwezigheid-app.firebaseapp.com",
+    projectId: "aanwezigheid-app",
+    storageBucket: "aanwezigheid-app.firebasestorage.app",
+    messagingSenderId: "188437676924",
+    appId: "1:188437676924:web:194eb53f7c6eb40ec3daf9",
+};
 
-                        <div class="mt-4 sm:mt-6 glass-card rounded-xl sm:rounded-2xl p-4">
-                            <div class="flex gap-3">
-                                <svg class="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                </svg>
-                                <div class="text-xs sm:text-sm text-slate-300">
-                                    <p class="font-medium mb-1">💡 Tip</p>
-                                    <p class="text-slate-400">Vergeet niet je status bij te werken als je aankomt of weggaat!</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+const appFirebase = initializeApp(firebaseConfig);
+const db = getFirestore(appFirebase);
 
-                <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-50">
-                    <div class="max-w-6xl mx-auto px-4 py-3 sm:py-4">
-                        <div class="flex items-center justify-around">
-                            <a href="medewerker-app.html" class="nav-item flex flex-col items-center gap-1 p-2 rounded-xl group">
-                                <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                                <span class="text-xs text-blue-400">Medewerker</span>
-                            </a>
-                            <a href="index.html" class="nav-item flex flex-col items-center gap-1 p-2 rounded-xl group">
-                                <svg class="w-6 h-6 text-slate-400 group-hover:text-slate-300 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
-                                <span class="text-xs text-slate-400 group-hover:text-slate-300 transition-colors">Home</span>
-                            </a>
-                            <a href="lichtkrant.html" class="nav-item flex flex-col items-center gap-1 p-2 rounded-xl group">
-                                <svg class="w-6 h-6 text-slate-400 group-hover:text-green-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
-                                <span class="text-xs text-slate-400 group-hover:text-green-400 transition-colors">Lichtkrant</span>
-                            </a>
-                            <a href="admin-dashboard.html" class="nav-item flex flex-col items-center gap-1 p-2 rounded-xl group">
-                                <svg class="w-6 h-6 text-slate-400 group-hover:text-purple-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
-                                <span class="text-xs text-slate-400 group-hover:text-purple-400 transition-colors">Admin</span>
-                            </a>
-                        </div>
-                    </div>
-                </nav>
-            `;
+let medewerkers = [];
+let statusMap = {};
+let loading = true;
 
-            window._resetMedewerker = () => {
-                selectedMedewerker = null;
-                status = 'Afwezig';
-                lastUpdate = null;
-                render();
-            };
+async function init(){
+    await Promise.all([
+        loadMedewerkers(),
+        loadAanwezigheid()
+    ]);
+
+    loading = false;
+    render();
+}
+
+async function loadMedewerkers(){
+    const snap = await getDocs(collection(db,'medewerkers'));
+    medewerkers = snap.docs.map(d => d.data()).filter(m => m.naam);
+}
+
+async function loadAanwezigheid(){
+    const snap = await getDocs(collection(db,'aanwezigheid'));
+
+    statusMap = {};
+    snap.docs.forEach(doc => {
+        const d = doc.data();
+        statusMap[d.naam] = d.status;
+    });
+}
+
+async function toggleStatus(naam){
+
+    const huidige = statusMap[naam] || 'Afwezig';
+    const nieuwe = huidige === 'Aanwezig' ? 'Afwezig' : 'Aanwezig';
+
+    statusMap[naam] = nieuwe;
+    render();
+
+    try{
+        const now = new Date();
+
+        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const end = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1);
+
+        const q = query(
+            collection(db,'aanwezigheid'),
+            where('naam','==',naam),
+            where('datum','>=',Timestamp.fromDate(start)),
+            where('datum','<',Timestamp.fromDate(end))
+        );
+
+        const snap = await getDocs(q);
+
+        if(!snap.empty){
+            await updateDoc(snap.docs[0].ref,{
+                status:nieuwe,
+                tijdstip:Timestamp.fromDate(now)
+            });
+        }else{
+            await addDoc(collection(db,'aanwezigheid'),{
+                naam,
+                status:nieuwe,
+                datum:Timestamp.fromDate(now),
+                tijdstip:Timestamp.fromDate(now)
+            });
         }
 
-        loadMedewerkers();
-    </script>
+    }catch(e){
+        statusMap[naam] = huidige;
+        render();
+    }
+}
+
+function render(){
+
+    const app = document.getElementById('app');
+
+    if(loading){
+        app.innerHTML = `
+        <div class="gradient-bg flex items-center justify-center text-white">
+            Laden...
+        </div>`;
+        return;
+    }
+
+    medewerkers.sort((a,b)=>a.naam.localeCompare(b.naam,'nl'));
+
+    app.innerHTML = `
+    <div class="gradient-bg text-white pb-24">
+
+        <div class="max-w-4xl mx-auto p-4">
+
+            <div class="glass-card rounded-3xl p-6 mb-6">
+                <h1 class="text-3xl font-bold mb-2">Aanwezigheid</h1>
+                <p class="text-slate-400">Tik op een naam om je status te wijzigen</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+
+                ${medewerkers.map(m => {
+
+                    const status = statusMap[m.naam] || 'Afwezig';
+                    const aanwezig = status === 'Aanwezig';
+
+                    return `
+                    <button
+                        onclick="toggleStatus('${m.naam}')"
+                        class="teacher-card glass-card rounded-3xl p-5 border-2
+                        ${aanwezig
+                            ? 'bg-green-500/20 border-green-500/40'
+                            : 'bg-red-500/20 border-red-500/40'
+                        }">
+
+                        <div class="text-2xl font-bold mb-2">
+                            ${aanwezig ? '🟢' : '🔴'} ${m.naam}
+                        </div>
+
+                        <div class="text-lg text-slate-300">
+                            ${status}
+                        </div>
+
+                    </button>`;
+                }).join('')}
+
+            </div>
+
+        </div>
+
+        <nav class="bottom-nav fixed bottom-0 left-0 right-0 z-50">
+            <div class="max-w-6xl mx-auto px-4 py-3">
+                <div class="flex justify-around">
+
+                    <a href="medewerker-app.html" class="nav-item p-2 text-blue-400">Medewerker</a>
+                    <a href="index.html" class="nav-item p-2 text-slate-400">Home</a>
+                    <a href="lichtkrant.html" class="nav-item p-2 text-slate-400">Lichtkrant</a>
+                    <a href="admin-dashboard.html" class="nav-item p-2 text-slate-400">Admin</a>
+
+                </div>
+            </div>
+        </nav>
+
+    </div>
+    `;
+}
+
+window.toggleStatus = toggleStatus;
+
+init();
+
+</script>
+
 </body>
 </html>
