@@ -174,6 +174,12 @@
 
         window.handleMedewerkerSelect = handleMedewerkerSelect;
         window.handleToggle = handleToggle;
+        function handleToggleStatus(newStatus) {
+    if (!selectedMedewerker) return;
+    updateStatus(newStatus);
+}
+
+window.handleToggleStatus = handleToggleStatus;
 
         // ====================================
         // RENDER
@@ -235,36 +241,39 @@
                             </div>
                         ` : ''}
 
-                        ${selectedMedewerker ? `
-                            <div class="glass-card-strong rounded-2xl sm:rounded-3xl p-6 sm:p-8 animate-fade-in">
-                                <h2 class="text-lg sm:text-xl font-semibold text-slate-300 mb-6 text-center">Mijn Status</h2>
-                                <div class="text-center mb-8">
-                                    <div class="inline-flex items-center gap-3 px-6 sm:px-8 py-4 sm:py-5 rounded-2xl text-xl sm:text-2xl font-bold ${status === 'Aanwezig' ? 'bg-gradient-to-br from-green-500/20 to-emerald-500/20 border-2 border-green-500/30 text-green-300' : 'bg-gradient-to-br from-red-500/20 to-orange-500/20 border-2 border-red-500/30 text-red-300'}">
-                                        <svg class="w-6 h-6 sm:w-8 sm:h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            ${status === 'Aanwezig' ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>' : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"/>'}
-                                        </svg>
-                                        <span>${status}</span>
-                                    </div>
-                                </div>
-                                <div class="flex justify-center mb-8">
-                                    <button onclick="handleToggle()" ${saving ? 'disabled' : ''}
-                                        class="toggle-switch relative inline-flex h-14 sm:h-16 w-28 sm:w-32 items-center rounded-full transition-all duration-300 ${status === 'Aanwezig' ? 'bg-gradient-to-r from-green-500 to-emerald-500' : 'bg-gradient-to-r from-red-500 to-orange-500'} ${saving ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-lg hover:shadow-current/30'}">
-                                        <span class="inline-block h-10 sm:h-12 w-10 sm:w-12 transform rounded-full bg-white shadow-lg transition-transform duration-300 ${status === 'Aanwezig' ? 'translate-x-14 sm:translate-x-16' : 'translate-x-2'}"></span>
-                                    </button>
-                                </div>
-                                <div class="text-center mb-6">
-                                    <p class="text-sm sm:text-base text-slate-400">${saving ? 'Bezig met opslaan...' : 'Tik op de schakelaar om je status te wijzigen'}</p>
-                                </div>
-                                ${lastUpdate ? `
-                                    <div class="glass-card rounded-xl p-3 sm:p-4 flex items-center justify-center gap-2 text-xs sm:text-sm text-slate-400">
-                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                                        </svg>
-                                        <span>Laatst bijgewerkt: ${lastUpdate.toLocaleTimeString('nl-NL', {hour: '2-digit', minute: '2-digit'})}</span>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        ` : ''}
+                        <div class="glass-card-strong rounded-2xl p-4 sm:p-6 animate-fade-in">
+    <h2 class="text-lg font-semibold text-slate-300 mb-4 text-center">Status wijzigen</h2>
+
+    <div class="grid grid-cols-2 gap-4">
+
+        <!-- AANWEZIG -->
+        <button onclick="handleToggleStatus('Aanwezig')"
+            class="p-5 rounded-2xl border transition-all active:scale-95
+            ${status === 'Aanwezig'
+                ? 'bg-green-500/20 border-green-400 text-green-300'
+                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'}">
+
+            <div class="text-2xl mb-2">🟢</div>
+            <div class="font-bold">Aanwezig</div>
+        </button>
+
+        <!-- AFWEZIG -->
+        <button onclick="handleToggleStatus('Afwezig')"
+            class="p-5 rounded-2xl border transition-all active:scale-95
+            ${status === 'Afwezig'
+                ? 'bg-red-500/20 border-red-400 text-red-300'
+                : 'bg-white/5 border-white/10 text-slate-300 hover:bg-white/10'}">
+
+            <div class="text-2xl mb-2">🔴</div>
+            <div class="font-bold">Afwezig</div>
+        </button>
+
+    </div>
+
+    <div class="mt-6 text-center text-sm text-slate-400">
+        ${saving ? 'Bezig met opslaan...' : 'Tik op een tegel om je status te wijzigen'}
+    </div>
+</div>
 
                         <div class="mt-4 sm:mt-6 glass-card rounded-xl sm:rounded-2xl p-4">
                             <div class="flex gap-3">
