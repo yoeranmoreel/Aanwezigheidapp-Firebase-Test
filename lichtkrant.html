@@ -63,20 +63,20 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-        import { getFirestore, collection, getDocs, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+        import { getFirestore, collection, getDocs, onSnapshot, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
         // ====================================
         // FIREBASE CONFIG — vul jouw gegevens in
         // ====================================
-        	const firebaseConfig = {
+          const firebaseConfig = {
   	apiKey: "AIzaSyD9w-uzVhuvfIR5_UH-xcMKJPAlpx5fKRk",
   	authDomain: "aanwezigheid-app.firebaseapp.com",
   	projectId: "aanwezigheid-app",
- 	storageBucket: "aanwezigheid-app.firebasestorage.app",
- 	messagingSenderId: "188437676924",
- 	appId: "1:188437676924:web:194eb53f7c6eb40ec3daf9",
+  	storageBucket: "aanwezigheid-app.firebasestorage.app",
+  	messagingSenderId: "188437676924",
+  	appId: "1:188437676924:web:194eb53f7c6eb40ec3daf9",
   	measurementId: "G-V8WM335NFL"
-	};
+     };
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -86,7 +86,6 @@
         // ====================================
         const WEER_API_KEY = '2a4ded2a6691d223778f1e3c83335bc2';
         const PLAATS = 'Spijkenisse';
-        const REFRESH_INTERVAL = 60000;
         const WEER_REFRESH = 1800000;
         const NIEUWS_REFRESH = 3600000;
         // Pas aan naar jouw GitHub raw URL:
@@ -191,40 +190,42 @@
         // ====================================
         // FIREBASE DATA
         // ====================================
-        async function fetchData() {
-            try {
-                const now = new Date();
-                const startVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                const eindeVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+        async function init() {
+            const now = new Date();
+            const startVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const eindeVanDag = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
 
-                const aanwezigheidQuery = query(
-                    collection(db, 'aanwezigheid'),
-                    where('datum', '>=', Timestamp.fromDate(startVanDag)),
-                    where('datum', '<', Timestamp.fromDate(eindeVanDag))
-                );
-                const mededelingenQuery = query(collection(db, 'mededelingen'), where('actief', '==', true));
+            // Medewerkers en mededelingen: eenmalig laden
+            const mededelingenQuery = query(collection(db, 'mededelingen'), where('actief', '==', true));
+            const [medSnap, meddSnap] = await Promise.all([
+                getDocs(collection(db, 'medewerkers')),
+                getDocs(mededelingenQuery)
+            ]);
+            medewerkers = medSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.naam);
+            mededelingen = meddSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-                const [medSnap, aSnap, meddSnap] = await Promise.all([
-                    getDocs(collection(db, 'medewerkers')),
-                    getDocs(aanwezigheidQuery),
-                    getDocs(mededelingenQuery)
-                ]);
+            // Aanwezigheid: realtime via onSnapshot — geen polling, geen knipperen
+            const aanwezigheidQuery = query(
+                collection(db, 'aanwezigheid'),
+                where('datum', '>=', Timestamp.fromDate(startVanDag)),
+                where('datum', '<', Timestamp.fromDate(eindeVanDag))
+            );
 
-                medewerkers = medSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(m => m.naam);
-                aanwezigheid = aSnap.docs.map(d => ({ id: d.id, ...d.data(), tijdstip: d.data().tijdstip?.toDate() }));
-                mededelingen = meddSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            onSnapshot(aanwezigheidQuery, (snapshot) => {
+                aanwezigheid = snapshot.docs.map(d => ({
+                    id: d.id,
+                    ...d.data(),
+                    tijdstip: d.data().tijdstip?.toDate()
+                }));
                 loading = false;
 
+                // Alleen de namenlijst updaten, niet de hele pagina herschrijven
                 if (document.getElementById('aanwezigheid-lijst')) {
                     updateAanwezigheidLijst();
                 } else {
                     render();
                 }
-            } catch (error) {
-                console.error('Fetch error:', error);
-                loading = false;
-                render();
-            }
+            });
         }
 
         function getStatusData() {
@@ -510,10 +511,10 @@
                         ${!isGangMode ? `
                             <div class="glass-card rounded-xl sm:rounded-2xl px-3 sm:px-4 py-2 sm:py-3 mt-3 sm:mt-4 flex-shrink-0 flex items-center gap-3">
                                 <div class="bg-green-500/20 border border-green-500/30 rounded-lg px-2 py-1 flex-shrink-0">
-                                    <span class="text-xs font-bold text-green-300 uppercase tracking-wide">NOS</span>
+                                    <span class="${isLerarenkamer ? 'text-sm' : 'text-xs'} font-bold text-green-300 uppercase tracking-wide">NOS</span>
                                 </div>
                                 <div class="ticker-wrapper">
-                                    <span id="nieuws-ticker" class="ticker-content text-xs sm:text-sm text-slate-300">
+                                    <span id="nieuws-ticker" class="ticker-content ${isLerarenkamer ? 'text-lg' : 'text-xs sm:text-sm'} text-slate-300">
                                         ${nieuws.length > 0 ? nieuws.join('   •   ') : 'Nieuws laden...'}
                                     </span>
                                 </div>
@@ -546,10 +547,8 @@
         // INIT
         // ====================================
         setInterval(updateTime, 1000);
-        fetchData();
+        init();
         fetchVerjaardagen();
-        setInterval(fetchData, REFRESH_INTERVAL);
-        setInterval(fetchVerjaardagen, REFRESH_INTERVAL);
 
         if (!isGangMode) {
             fetchWeer();
